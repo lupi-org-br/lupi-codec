@@ -28,6 +28,19 @@ local function add_new_color(context, hex, key)
   return idx
 end
 
+local function nearest_index(context, r, g, b)
+  local best_i, best_d = 1, math.huge
+  for i = 2, #context.palette_rgb do
+    local c = context.palette_rgb[i]
+    local d = Convert.color_dist_sq(r, g, b, c.r, c.g, c.b)
+    if d < best_d then
+      best_d = d
+      best_i = i
+    end
+  end
+  return best_i
+end
+
 function PixelIndexer.get_index(r, g, b, a, context)
   local is_transparent = a == 0
   if is_transparent then
@@ -50,7 +63,18 @@ function PixelIndexer.get_index(r, g, b, a, context)
     return existing_idx
   end
 
-  return add_new_color(context, hex, key)
+  -- Scan (magick -depth 5 -flatten) and encode (RGBA 8-bit) disagree, so
+  -- unmatched pixels used to grow the palette past 256 and crash string.char.
+  local qr, qg, qb = Convert.parse_hex_color(hex)
+  local idx
+  if #context.palette < 256 then
+    idx = add_new_color(context, hex, key)
+  else
+    idx = nearest_index(context, qr, qg, qb)
+    context.palette_lookup[hex] = idx
+    context.color_cache[key] = idx
+  end
+  return idx
 end
 
 function PixelIndexer.ensure_palette_rgb(context)

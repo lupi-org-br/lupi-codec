@@ -15,22 +15,29 @@ local function is_hidden_file(name)
   return name:match("^%.") ~= nil
 end
 
-local function list_files_recursive(dir, prefix, result)
-  prefix = prefix or ""
-  result = result or {}
-  local handle = io.popen("ls -A '" .. dir .. "'")
+-- One `find` instead of ls + popen("test -d") per entry. The old loop leaked
+-- FDs (inner popen never closed, parent ls stayed open while recursing) and
+-- died with "attempt to index a nil value" on cassettes with thousands of files.
+local function list_files_recursive(dir)
+  local result = {}
+  local cmd = string.format(
+    "find '%s' -name '.*' -prune -o -type f -print",
+    dir
+  )
+  local handle = io.popen(cmd)
   if not handle then return result end
 
-  for name in handle:lines() do
-    if not is_hidden_file(name) then
-      local full_path = dir .. "/" .. name
-      local rel_path = prefix .. name
-      local attr = io.popen("test -d '" .. full_path .. "' && echo dir || echo file"):read("*a")
-      if attr:match("dir") then
-        list_files_recursive(full_path, rel_path .. "/", result)
-      else
-        table.insert(result, rel_path)
-      end
+  local prefix = dir
+  if prefix:sub(-1) ~= "/" then
+    prefix = prefix .. "/"
+  end
+  local prefix_len = #prefix
+
+  for full_path in handle:lines() do
+    local rel_path = full_path:sub(prefix_len + 1)
+    local base = rel_path:match("([^/]+)$") or rel_path
+    if rel_path ~= "" and not is_hidden_file(base) then
+      table.insert(result, rel_path)
     end
   end
   handle:close()
@@ -38,7 +45,8 @@ local function list_files_recursive(dir, prefix, result)
 end
 
 local function get_file_mtime(path)
-  local handle = io.popen("stat -c %Y '" .. path .. "'")
+  -- GNU: stat -c %Y; BSD/macOS: stat -f %m
+  local handle = io.popen("stat -c %Y '" .. path .. "' 2>/dev/null || stat -f %m '" .. path .. "'")
   if not handle then return 0 end
   local mtime = handle:read("*a")
   handle:close()
@@ -67,7 +75,8 @@ end
 local function perform_atomic_swap(output_dir, release_path)
   local current_link = output_dir .. "/current"
   local tmp_link = output_dir .. "/current_tmp"
-  os.execute(string.format("ln -sfn %s %s && mv -Tf %s %s", release_path, tmp_link, tmp_link, current_link))
+  os.execute(string.format("ln -sfn '%s' '%s'", release_path, tmp_link))
+  os.rename(tmp_link, current_link)
 end
 
 local function main()

@@ -84,14 +84,17 @@ function Manager.generate_lua_map(palette, release_path, version)
     f:close()
   end
 
-  local handle = io.popen("stat -c %s '" .. release_path .. "/" .. p_path .. "'")
-  local size = handle:read("*a")
-  handle:close()
+  local pal_file = io.open(release_path .. "/" .. p_path, "rb")
+  local size = 0
+  if pal_file then
+    size = pal_file:seek("end") or 0
+    pal_file:close()
+  end
 
   return {
     path = p_path,
     ts = version,
-    size = tonumber(size) or 0,
+    size = size,
     metadata = { type = "lua_code" }
   }
 end

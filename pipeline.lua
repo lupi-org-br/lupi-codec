@@ -4,10 +4,11 @@ local json = require("dkjson")
 local Pipeline = {}
 
 local function get_file_size(path)
-  local handle = io.popen("stat -c %s '" .. path .. "'")
-  local size = handle:read("*a")
-  handle:close()
-  return tonumber(size) or 0
+  local f = io.open(path, "rb")
+  if not f then return 0 end
+  local size = f:seek("end")
+  f:close()
+  return size or 0
 end
 
 local function handle_result_new(res, release_path, ts_num, final_items)

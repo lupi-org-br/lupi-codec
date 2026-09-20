@@ -7,6 +7,8 @@ local function encode_pixel_at(raw_data, idx, context)
 
   if r and g and b and a then
     local index = PixelIndexer.get_index(r, g, b, a, context)
+    if index < 1 then index = 1 end
+    if index > 256 then index = 256 end
     return string.char(index - 1)
   end
   return nil
